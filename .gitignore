@@ -25,3 +25,8 @@ Thumbs.db
 # Claude files
 cld/
 claude*.md
+
+# Third-party libs (download manually, see main.cpp header)
+libs/imgui/*
+libs/glfw/*
+!libs/**/.gitkeep

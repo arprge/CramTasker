@@ -2,21 +2,44 @@
 #define SCHEDULER_H
 
 #include <vector>
+#include <queue>
+#include <string>
 #include "task.h"
 
-class Scheduler {
-private:
-    std::vector<Task> allTasks; // Тасклит / #1 дқ
+namespace CramCore {
 
+class CramTasker {
 public:
-    void addTask(std::string title, std::string sub, int s, int e, int p);
-    void addSubject(std::string name, int credits, int grade); 
+    // данные
+    void addSubject(const std::string& name, int credits, int grade);
+    void addTask(const std::string& title, const std::string& subKey,
+                 int startH, int endH, int prio = 5);
 
-    // Таймсорт / #1 алгорит
-    void sortByTime();
+    // сортировка — O(n log n)
+    void sortByEnd();
 
-    
-    void display();
+    // greedy activity selection — O(n log n)
+    std::vector<Task> greedySchedule();
+
+    // TODO (Week 11): DP weighted interval — O(n log n)
+    std::vector<Task> dpSchedule();
+
+    // вывод
+    void display() const;
+    void displayUrgent(int topN = 5) const;
+
+    // геттеры
+    const std::vector<Task>& getTasks() const { return tasks_; }
+
+private:
+    std::vector<Task> tasks_;       // Week 2: vector
+    SubjectMap        subjects_;    // Week 5: unordered_map
+
+    void recalcWeight_(Task& t) const;
+
+    // TODO (Week 8-10): граф свободных слотов
 };
+
+} // namespace CramCore
 
 #endif

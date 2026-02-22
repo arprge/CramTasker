@@ -1,72 +1,42 @@
-Честный ответ: твой текущий промпт очень хорош, но чтобы он на 100% «выжал» из Клода соответствие методичке, нам нужно сделать его более специфичным в плане инвентаризации тем.
+# Project Context: CramTasker (University Syllabus-Aligned)
+**Course:** CSE6781 – Algorithms and Data Structures (15-week curriculum)
+**Objective:** Build a scheduling engine that integrates the core topics of the semester.
 
-В твоем силлабусе есть темы, которые не всегда очевидны для планировщика (например, Графы на 9-10 неделе или Деревья на 6-й). Если мы не подскажем модели, как эти темы вплести в архитектуру сейчас, потом придется «перекраивать» весь проект.
+## 1. Technical Scope (Syllabus Constraints)
+Claude, your implementation and advice MUST stay within these specific topics found in the course plan:
 
-Давай внесем три критических дополнения, чтобы промпт закрыл абсолютно все темы семестра:
-Что нужно добавить в промпт (дополненные блоки)
-1. Карта соответствия темам (Syllabus Mapping)
+### Data Structures (DS)
+- **Linear (Week 2):** std::vector, std::list, Stack, Queue.
+- **Hashing (Week 5):** Hash-tables (unordered_map) for O(1) lookup of subjects/grades.
+- **Trees (Week 6-7):** Binary Search Trees (BST) or AVL for categorized tasks; Heaps (priority_queue) for deadline management.
+- **Graphs (Week 8-10):** Adjacency lists for representing time-slot dependencies or free-time gaps.
 
-Добавь этот блок в Context.md, чтобы модель понимала, куда и какую структуру данных «приткнуть»:
+### Algorithms (ALGO)
+- **Sorting/Searching (Week 3-4):** MergeSort/QuickSort for timeline ordering; Binary Search for gap finding.
+- **Graph Traversal (Week 8-9):** BFS/DFS for availability analysis; Dijkstra for "shortest path" to task completion.
+- **MST (Week 10):** Kruskal/Prim logic for connecting related study modules.
+- **Dynamic Programming (Week 11):** Weighted Interval Scheduling (to maximize 'Profit' or GPA).
+- **Greedy (Week 12):** Activity Selection (maximum tasks in a window), Fractional Knapsack for partial task completion.
 
-    Syllabus-to-Code Mapping:
+## 2. Complexity Requirements
+- Every major function must have a **Big-O complexity comment**.
+- Aim for optimal solutions
 
-        Week 2 (Arrays/Lists): std::vector for task storage.
+## 3. Project Architecture (Modular Setup)
+Refactor my code into 4 files to demonstrate "Professional Student" level:
+1. `task.h`: Data models (`struct Subject`, `struct Task`).
+2. `scheduler.h`: Interface for the `CramTasker` engine (within `namespace CramCore`).
+3. `scheduler.cpp`: Implementation of logic (Focus on Greedy and DP).
+4. `main.cpp`: Entry point showing the integration of the above.
 
-        Week 3 (Stacks/Queues): Task undo/redo stack or processing queue.
+## 4. Academic "Profit" Formula
+Calculate task priority using the syllabus-implied logic:
+`Priority = Subject.Credits * (100 - Subject.CurrentGrade)`
 
-        Week 4 (Sorting): Quick/Merge sort for timeline ordering.
+## 5. Implementation Instructions for Claude:
+- Do NOT use advanced C++20/23 features or external AI libraries.
+- Use **TODO comments** for weeks 6-15 so I can fill them in as the course progresses.
+- Ensure the code follows the "Activity Selection" logic from Week 12 of the syllabus for the core scheduling loop.
 
-        Week 5 (Hash Tables): std::unordered_map for O(1) Subject lookup.
-
-        Week 6-7 (Trees/Heaps): std::priority_queue (Heap) for urgent tasks; potential Tree for category hierarchy.
-
-        Week 9-10 (Graphs): Representing time-slots as nodes for finding optimal paths (Free-time analysis).
-
-        Week 11-12 (DP/Greedy): Core scheduling logic.
-
-2. Математическая модель "Profit"
-
-Учителя любят, когда есть формула. Добавь это:
-
-    Optimization Formula:
-    Task Weight W=Credits×(100−CurrentGrade)×DifficultyFactor.
-    The goal is to maximize ∑W within the constraints of free time windows.
-
-3. Архитектурный задел под iCal
-
-Так как ты планируешь подписку по ссылке, нужно указать это как внешний модуль:
-
-    External Integration:
-    The Parser module must have a placeholder for libcurl (networking) and a string-processing engine to handle .ics files.
-
-Обновленный (финальный) "Супер-промпт" для Клода
-
-Скопируй это и отправь вместе со своим кодом:
-
-«Я строю проект ExamAI на C++ согласно университетскому силлабусу (15 недель). Мне нужно, чтобы ты провел рефакторинг моего текущего кода, создав масштабируемый фундамент.
-
-Критически важные требования из методички:
-
-    Структуры данных: Заложи архитектуру так, чтобы я мог внедрить:
-
-        std::vector (хранение),
-
-        std::unordered_map (база предметов),
-
-        std::priority_queue (очередь дедлайнов),
-
-        и оставил место для Графа (анализ свободных окон времени).
-
-    Алгоритмы: Подготовь интерфейсы для:
-
-        Sort (сортировка по времени),
-
-        Greedy (Activity Selection),
-
-        Dynamic Programming (Weighted Interval Scheduling).
-
-    Архитектура: - Раздели на task.h, scheduler.h, scheduler.cpp, main.cpp.
-
-        Используй namespace ExamCore.
-
-        Вместо готовой реализации напиши подробные TODO-комментарии с указанием Big-O сложности, которую я должен буду достичь.
+---
+**Current Task:** Refactor my existing code into this 4-file architecture while maintaining the "CramTasker" name and the described syllabus-to-code mapping.

@@ -1,23 +1,3 @@
-// =============================================================
-//  CramTasker — GUI entry point (Dear ImGui + GLFW + OpenGL3)
-//
-//  SETUP (one-time):
-//  1. Download ImGui: https://github.com/ocornut/imgui
-//     Copy into libs/imgui/:
-//       imgui.h / .cpp, imgui_draw.cpp, imgui_tables.cpp,
-//       imgui_widgets.cpp, imgui_internal.h,
-//       imgui_impl_glfw.h / .cpp, imgui_impl_opengl3.h / .cpp,
-//       imgui_impl_opengl3_loader.h,
-//       imstb_rectpack.h, imstb_textedit.h, imstb_truetype.h
-//
-//  2. Download GLFW prebuilt (MinGW 64-bit):
-//     https://www.glfw.org/download.html
-//     libs/glfw/include/GLFW/glfw3.h
-//     libs/glfw/lib/libglfw3.a
-//
-//  3. Run build.bat
-// =============================================================
-
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"

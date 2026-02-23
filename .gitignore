@@ -22,6 +22,9 @@ out/
 .DS_Store
 Thumbs.db
 
+# ImGui settings
+imgui.ini
+
 # Claude files
 cld/
 claude*.md

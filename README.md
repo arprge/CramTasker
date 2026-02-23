@@ -2,9 +2,9 @@
 
 CramTasker is a C++ based Personal Exam Prep Tasker and Scheduler. It is designed to optimize study time based on exam deadlines, subject difficulty, and course credits. The project features a graphical user interface built with [Dear ImGui](libs/imgui).
 
-This project is being developed as part of a 15-week university undergraduate course, focusing on the practical application of data structures and algorithms with strict adherence to Big-O complexity constraints.
+I created this project during my freshman year because I always relied on ToDo lists, but scheduling and deciding the order was too tedious, so I decided to build a tool to automate that process, which also served as my project for the ASD.
 
-## Features & Academic Roadmap
+## Features 
 
 The project is structured to progressively implement advanced data structures and algorithms:
 

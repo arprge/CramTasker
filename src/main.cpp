@@ -10,7 +10,36 @@
 
 using namespace CramCore;
 
-// ---- helpers ------------------------------------------------
+static void loadTestData(CramTasker& planner) {
+    planner.addSubject("ASD",    5, 62);
+    planner.addSubject("LinAlg", 4, 78);
+    planner.addSubject("OS",     3, 55);
+
+    planner.addTask("Review heaps",     "ASD",    9, 11, 7);
+    planner.addTask("DP exercises",     "ASD",   13, 15, 8);
+    planner.addTask("Matrix mult",      "LinAlg",10, 12, 5);
+    planner.addTask("Scheduling lab",   "OS",    14, 16, 6);
+    planner.addTask("Graph traversal",  "ASD",   16, 18, 9);
+}
+
+static void renderSubjectListPanel(CramTasker& planner) {
+    ImGui::SeparatorText("Subjects");
+
+    const auto& subs = planner.getSubjects();
+    if (subs.empty()) {
+        ImGui::TextDisabled("No subjects added yet");
+        return;
+    }
+
+    ImGui::BeginChild("subj_list", ImVec2(0, 100), true);
+    for (const auto& [key, s] : subs) {
+        ImGui::Text("%-10s  cr=%d  gr=%d  prio=%.0f",
+                    s.name.c_str(), s.credits, s.currentGrade,
+                    s.calcPriority());
+    }
+    ImGui::EndChild();
+}
+
 static void renderAddSubjectPanel(CramTasker& planner) {
     static char name[64]  = "";
     static int  credits   = 3;
@@ -55,9 +84,13 @@ static void renderAddTaskPanel(CramTasker& planner) {
 static void renderSchedulePanel(CramTasker& planner) {
     ImGui::SeparatorText("Schedule (sorted by end time)");
 
-    if (ImGui::Button("Refresh")) planner.sortByEnd();
+    if (ImGui::Button("Sort##sched")) planner.sortByEnd();
 
-    ImGui::BeginChild("sched_list", ImVec2(0, 200), true);
+    ImGui::SameLine();
+    ImGui::TextDisabled("(%zu tasks, %zu subjects)",
+                        planner.taskCount(), planner.subjectCount());
+
+    ImGui::BeginChild("sched_list", ImVec2(0, 180), true);
     for (const auto& t : planner.getTasks()) {
         ImGui::Text("%02d:00-%02d:00  %-20s  [%s]  w=%.0f",
                     t.startHour, t.endHour,
@@ -71,12 +104,10 @@ static void renderUrgentPanel(CramTasker& planner) {
     ImGui::SeparatorText("Urgent (Heap top-N)");
     ImGui::SliderInt("Top N", &topN, 1, 10);
 
-    // build a local copy so displayUrgent can pop without touching planner
-    // TODO: expose a getTopN() method from CramTasker for cleaner access
     if (ImGui::Button("Show Urgent"))
-        planner.displayUrgent(topN);   // prints to stdout for now
+        planner.displayUrgent(topN);
 
-    ImGui::TextDisabled("(see terminal output)");
+    ImGui::TextDisabled("(see terminal)");
 }
 
 static void renderGreedyPanel(CramTasker& planner) {
@@ -86,15 +117,40 @@ static void renderGreedyPanel(CramTasker& planner) {
     if (ImGui::Button("Run Greedy"))
         result = planner.greedySchedule();
 
-    ImGui::BeginChild("greedy_list", ImVec2(0, 150), true);
+    if (!result.empty()) {
+        ImGui::SameLine();
+        ImGui::Text("=> %zu selected", result.size());
+    }
+
+    ImGui::BeginChild("greedy_list", ImVec2(0, 130), true);
     for (const auto& t : result) {
-        ImGui::Text("%02d:00-%02d:00  %s",
-                    t.startHour, t.endHour, t.title.c_str());
+        ImGui::Text("%02d:00-%02d:00  %s  (w=%.0f)",
+                    t.startHour, t.endHour, t.title.c_str(), t.weight);
     }
     ImGui::EndChild();
 }
 
-// ---- main ---------------------------------------------------
+static void renderDPPanel(CramTasker& planner) {
+    static std::vector<Task> dpResult;
+
+    ImGui::SeparatorText("DP Weighted Scheduling [WIP]");
+
+    if (ImGui::Button("Run DP")) {
+        dpResult = planner.dpSchedule();
+    }
+
+    if (dpResult.empty()) {
+        ImGui::TextColored(ImVec4(1, 0.8f, 0.3f, 1), "see terminal");
+    } else {
+        ImGui::BeginChild("dp_list", ImVec2(0, 100), true);
+        for (const auto& t : dpResult) {
+            ImGui::Text("%02d:00-%02d:00  %s", t.startHour, t.endHour,
+                        t.title.c_str());
+        }
+        ImGui::EndChild();
+    }
+}
+
 int main() {
     if (!glfwInit()) return 1;
 
@@ -102,7 +158,7 @@ int main() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 
-    GLFWwindow* window = glfwCreateWindow(900, 600, "CramTasker", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(960, 640, "CramTasker [WIP]", nullptr, nullptr);
     if (!window) { glfwTerminate(); return 1; }
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
@@ -115,13 +171,18 @@ int main() {
 
     CramTasker planner;
 
+    static bool seedLoaded = false;
+    if (!seedLoaded) {
+        loadTestData(planner);
+        seedLoaded = true;
+    }
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        // full-screen dockable window
         ImGui::SetNextWindowPos({0, 0});
         ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
         ImGui::Begin("CramTasker", nullptr,
@@ -129,8 +190,9 @@ int main() {
                      ImGuiWindowFlags_NoResize   |
                      ImGuiWindowFlags_NoMove);
 
-        // left column — inputs
-        ImGui::BeginChild("left", ImVec2(300, 0), false);
+        ImGui::BeginChild("left", ImVec2(320, 0), false);
+        renderSubjectListPanel(planner);
+        ImGui::Spacing();
         renderAddSubjectPanel(planner);
         ImGui::Spacing();
         renderAddTaskPanel(planner);
@@ -138,22 +200,23 @@ int main() {
 
         ImGui::SameLine();
 
-        // right column — results
         ImGui::BeginChild("right", ImVec2(0, 0), false);
         renderSchedulePanel(planner);
         ImGui::Spacing();
         renderUrgentPanel(planner);
         ImGui::Spacing();
         renderGreedyPanel(planner);
+        ImGui::Spacing();
+        renderDPPanel(planner);
         ImGui::EndChild();
 
         ImGui::End();
 
-        // render
         ImGui::Render();
         int w, h;
         glfwGetFramebufferSize(window, &w, &h);
         glViewport(0, 0, w, h);
+        glClearColor(0.1f, 0.1f, 0.12f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);

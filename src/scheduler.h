@@ -14,6 +14,7 @@ public:
     void addTask(const std::string& title, const std::string& subKey,
                  int startH, int endH, int prio = 5);
     bool removeTask(const std::string& title);
+    void toggleTaskCompletion(const std::string& title);
     void updateGrade(const std::string& subjectName, int newGrade);
 
     void sortByEnd();                       // O(n log n)

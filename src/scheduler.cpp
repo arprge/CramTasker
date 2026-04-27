@@ -36,6 +36,15 @@ bool CramTasker::removeTask(const std::string& title) {
     return false;
 }
 
+void CramTasker::toggleTaskCompletion(const std::string& title) {
+    for (auto& t : tasks_) {
+        if (t.title == title) {
+            t.completed = !t.completed;
+            break;
+        }
+    }
+}
+
 void CramTasker::updateGrade(const std::string& subjectName, int newGrade) {
     auto it = subjects_.find(subjectName);
     if (it == subjects_.end()) return;
@@ -112,8 +121,30 @@ std::vector<Task> CramTasker::dpSchedule() {
         dp[i] = std::max(dp[i - 1], incl);
     }
 
+    std::vector<Task> result;
+    int curr = (int)n - 1;
+    while (curr >= 0) {
+        int p = findLastNonConflicting(tasks_, curr);
+        double incl = tasks_[curr].weight + (p != -1 ? dp[p] : 0);
+        
+        if (curr == 0) {
+            result.push_back(tasks_[0]);
+            break;
+        }
+        
+        // DP check: was it included?
+        // Note: we use small epsilon for double comparison, or just >= 
+        if (incl >= dp[curr - 1] - 1e-9) {
+            result.push_back(tasks_[curr]);
+            curr = p;
+        } else {
+            curr = curr - 1;
+        }
+    }
+    std::reverse(result.begin(), result.end());
+
     std::cout << "[DP] optimal weight = " << dp[n - 1] << "\n";
-    return {};
+    return result;
 }
 
 void CramTasker::display() const {

@@ -10,7 +10,7 @@ namespace CramCore {
 
 class CramTasker {
 public:
-    void addSubject(const std::string& name, int credits, int grade);
+    void addSubject(const std::string& name, int points, int examOrder, int credits);
     void addTask(const std::string& title, const std::string& subKey,
                  int startH, int endH, int prio = 5);
     bool removeTask(const std::string& title);

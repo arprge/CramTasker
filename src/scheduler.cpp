@@ -5,11 +5,12 @@
 
 namespace CramCore {
 
-void CramTasker::addSubject(const std::string& name, int credits, int grade) {
+void CramTasker::addSubject(const std::string& name, int points, int examOrder, int credits) {
     Subject s;
     s.name = name;
+    s.points = points;
+    s.examOrder = examOrder;
     s.credits = credits;
-    s.currentGrade = grade;
     subjects_[name] = s;
 }
 
@@ -48,7 +49,7 @@ void CramTasker::toggleTaskCompletion(const std::string& title) {
 void CramTasker::updateGrade(const std::string& subjectName, int newGrade) {
     auto it = subjects_.find(subjectName);
     if (it == subjects_.end()) return;
-    it->second.currentGrade = newGrade;
+    it->second.points = newGrade;
     recalcAllWeights_();
 }
 

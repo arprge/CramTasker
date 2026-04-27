@@ -1,12 +1,6 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
-#ifndef CRAM_ENABLE_FREETYPE
-#define CRAM_ENABLE_FREETYPE 0
-#endif
-#if CRAM_ENABLE_FREETYPE
-#include "imgui_freetype.h"
-#endif
 #include <GLFW/glfw3.h>
 
 #include <string>
@@ -16,32 +10,35 @@
 
 using namespace CramCore;
 
-static void loadTestData(CramTasker& planner) {
-    planner.addSubject("ASD",    5, 62);
-    planner.addSubject("Discrete Math", 4, 78);
-    planner.addSubject("Calculs",     3, 55);
+static void renderTopBanner(CramTasker& planner) {
+    ImGui::TextUnformatted("Study planner dashboard");
+    ImGui::TextDisabled("1. Add subjects. 2. Add tasks. 3. Use greedy or DP to compare schedules.");
+    ImGui::Separator();
 
-    planner.addTask("Review heaps",     "ASD",    9, 11, 7);
-    planner.addTask("DP exercises",     "ASD",   13, 15, 8);
-    planner.addTask("Matrix mult",      "Calculs",10, 12, 5);
-    planner.addTask("Scheduling lab",   "Discrete Math",    14, 16, 6);
-    planner.addTask("Graph traversal",  "ASD",   16, 18, 9);
+    ImGui::Text("Subjects: %zu", planner.subjectCount());
+    ImGui::SameLine();
+    ImGui::Text("Tasks: %zu", planner.taskCount());
+    ImGui::SameLine();
+    ImGui::TextDisabled("Tip: update grades directly in the subjects table.");
+    ImGui::Spacing();
 }
 
 static void renderSubjectListPanel(CramTasker& planner) {
     ImGui::SeparatorText("Subjects (Editable Grades)");
+    ImGui::TextDisabled("Drag the grade slider to update priorities instantly.");
 
     const auto& subs = planner.getSubjects();
     if (subs.empty()) {
-        ImGui::TextDisabled("No subjects added yet");
+        ImGui::TextWrapped("No subjects added yet. Start by creating a subject on the left, then add tasks for it.");
         return;
     }
 
     ImGui::BeginChild("subj_list", ImVec2(0, 150), true);
-    if (ImGui::BeginTable("SubjTable", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+    if (ImGui::BeginTable("SubjTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
         ImGui::TableSetupColumn("Name");
-        ImGui::TableSetupColumn("Credits", ImGuiTableColumnFlags_WidthFixed, 50.0f);
-        ImGui::TableSetupColumn("Grade", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+        ImGui::TableSetupColumn("Order", ImGuiTableColumnFlags_WidthFixed, 40.0f);
+        ImGui::TableSetupColumn("Credits", ImGuiTableColumnFlags_WidthFixed, 45.0f);
+        ImGui::TableSetupColumn("Points", ImGuiTableColumnFlags_WidthFixed, 80.0f);
         ImGui::TableSetupColumn("Prior.", ImGuiTableColumnFlags_WidthFixed, 50.0f);
         ImGui::TableHeadersRow();
 
@@ -50,14 +47,16 @@ static void renderSubjectListPanel(CramTasker& planner) {
             ImGui::TableNextColumn();
             ImGui::Text("%s", s.name.c_str());
             ImGui::TableNextColumn();
+            ImGui::Text("%d", s.examOrder);
+            ImGui::TableNextColumn();
             ImGui::Text("%d", s.credits);
             ImGui::TableNextColumn();
             
-            int grade = s.currentGrade;
+            int pts = s.points;
             ImGui::PushID(key.c_str());
             ImGui::SetNextItemWidth(70.0f);
-            if (ImGui::SliderInt("##gr", &grade, 0, 100)) {
-                planner.updateGrade(key, grade);
+            if (ImGui::SliderInt("##gr", &pts, 0, 100)) {
+                planner.updateGrade(key, pts);
             }
             ImGui::PopID();
             
@@ -71,19 +70,40 @@ static void renderSubjectListPanel(CramTasker& planner) {
 
 static void renderAddSubjectPanel(CramTasker& planner) {
     static char name[64]  = "";
+    static int  points    = 70;
+    static int  examOrder = 1;
     static int  credits   = 3;
-    static int  grade     = 70;
 
     ImGui::SeparatorText("Add Subject");
-    ImGui::InputText("Name##subj",  name, sizeof(name));
-    ImGui::SliderInt("Credits",     &credits, 1, 10);
-    ImGui::SliderInt("Grade (0-100)", &grade, 0, 100);
+    ImGui::TextDisabled("Create a course with its points, exam order, and credits.");
+    ImGui::Dummy(ImVec2(0.0f, 2.0f));
 
-    if (ImGui::Button("Add Subject")) {
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+    ImGui::InputTextWithHint("Name##subj", "e.g. Algorithms", name, sizeof(name));
+    
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+    ImGui::SliderInt("Points", &points, 0, 100);
+    
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+    ImGui::SliderInt("Exam Order", &examOrder, 1, 30);
+    
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+    ImGui::SliderInt("Credits", &credits, 1, 10);
+    
+    ImGui::Dummy(ImVec2(0.0f, 4.0f));
+
+    if (ImGui::Button("Add Subject", ImVec2(140, 32))) {
         if (name[0] != '\0') {
-            planner.addSubject(name, credits, grade);
+            planner.addSubject(name, points, examOrder, credits);
             memset(name, 0, sizeof(name));
         }
+    }
+    ImGui::SameLine(0, 10.0f);
+    if (ImGui::Button("Clear", ImVec2(100, 32))) {
+        memset(name, 0, sizeof(name));
+        points = 70;
+        examOrder = 1;
+        credits = 3;
     }
 }
 
@@ -95,25 +115,41 @@ static void renderAddTaskPanel(CramTasker& planner) {
     static int  prio       = 5;
 
     ImGui::SeparatorText("Add Task");
-    ImGui::InputText("Title##task",   title,  sizeof(title));
+    ImGui::TextDisabled("Choose a subject, then set the study window.");
+    ImGui::InputTextWithHint("Title##task", "e.g. Revise sorting", title, sizeof(title));
 
-    if (ImGui::BeginCombo("Subject", subKey[0] == '\0' ? "(select)" : subKey)) {
-        for (const auto& [k, s] : planner.getSubjects()) {
-            bool is_selected = (strcmp(subKey, k.c_str()) == 0);
-            if (ImGui::Selectable(k.c_str(), is_selected)) {
-                memset(subKey, 0, sizeof(subKey));
-                strncpy(subKey, k.c_str(), sizeof(subKey) - 1);
-            }
-            if (is_selected) ImGui::SetItemDefaultFocus();
+    const auto& subjects = planner.getSubjects();
+    if (subjects.empty()) {
+        ImGui::BeginDisabled();
+        if (ImGui::BeginCombo("Subject", "Add a subject first")) {
+            ImGui::EndCombo();
         }
-        ImGui::EndCombo();
+        ImGui::EndDisabled();
+        ImGui::TextWrapped("You need at least one subject before creating a task.");
+    } else {
+        if (ImGui::BeginCombo("Subject", subKey[0] == '\0' ? "(select)" : subKey)) {
+            for (const auto& [k, s] : subjects) {
+                bool is_selected = (strcmp(subKey, k.c_str()) == 0);
+                if (ImGui::Selectable(k.c_str(), is_selected)) {
+                    memset(subKey, 0, sizeof(subKey));
+                    strncpy(subKey, k.c_str(), sizeof(subKey) - 1);
+                }
+                if (is_selected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
     }
 
     ImGui::SliderInt("Start hour",    &startH, 0, 23);
     ImGui::SliderInt("End hour",      &endH,   1, 24);
     ImGui::SliderInt("Priority",      &prio,   1, 10);
+    ImGui::TextDisabled("Higher priority means the task appears more urgent in the heap view.");
 
-    if (ImGui::Button("Add Task")) {
+    ImGui::BeginDisabled(subjects.empty());
+    bool addPressed = ImGui::Button("Add Task");
+    ImGui::EndDisabled();
+
+    if (addPressed && !subjects.empty()) {
         if (title[0] != '\0' && subKey[0] != '\0' && endH > startH) {
             planner.addTask(title, subKey, startH, endH, prio);
             memset(title,  0, sizeof(title));
@@ -123,6 +159,7 @@ static void renderAddTaskPanel(CramTasker& planner) {
 
 static void renderSchedulePanel(CramTasker& planner) {
     ImGui::SeparatorText("Schedule");
+    ImGui::TextDisabled("Completed tasks are dimmed. Conflicts are highlighted in red.");
 
     if (ImGui::Button("Sort by End Time")) planner.sortByEnd();
     ImGui::SameLine();
@@ -159,7 +196,7 @@ static void renderSchedulePanel(CramTasker& planner) {
             ImGui::TableNextColumn();
             bool conflict = (lastEnd != -1 && t.startHour < lastEnd);
             if (conflict) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
-            ImGui::Text("%02d:00-%02d:00", t.startHour, t.endHour);
+            ImGui::Text("%02d:00 - %02d:00", t.startHour, t.endHour);
             if (conflict) ImGui::PopStyleColor();
             if (!conflict || t.endHour > lastEnd) lastEnd = t.endHour;
             
@@ -167,7 +204,8 @@ static void renderSchedulePanel(CramTasker& planner) {
             
             // Title & Subject
             ImGui::TableNextColumn();
-            ImGui::Text("%s [%s]", t.title.c_str(), t.subjectKey.c_str());
+            ImGui::Text("%s", t.title.c_str());
+            ImGui::TextDisabled("%s", t.subjectKey.c_str());
 
             // Weight
             ImGui::TableNextColumn();
@@ -195,6 +233,7 @@ static void renderSchedulePanel(CramTasker& planner) {
 static void renderUrgentPanel(CramTasker& planner) {
     static int topN = 3;
     ImGui::SeparatorText("Urgent (Heap top-N)");
+    ImGui::TextDisabled("Shows the most urgent tasks based on calculated weight.");
     ImGui::SliderInt("Top N", &topN, 1, 10);
 
     if (ImGui::Button("Show Urgent"))
@@ -207,6 +246,7 @@ static void renderGreedyPanel(CramTasker& planner) {
     static std::vector<Task> result;
 
     ImGui::SeparatorText("Greedy Activity Selection");
+    ImGui::TextDisabled("Maximizes the number of non-overlapping study blocks.");
     if (ImGui::Button("Run Greedy"))
         result = planner.greedySchedule();
 
@@ -227,6 +267,7 @@ static void renderDPPanel(CramTasker& planner) {
     static std::vector<Task> dpResult;
 
     ImGui::SeparatorText("DP Weighted Scheduling");
+    ImGui::TextDisabled("Chooses the best total-priority schedule.");
 
     if (ImGui::Button("Run DP")) {
         dpResult = planner.dpSchedule();
@@ -237,7 +278,7 @@ static void renderDPPanel(CramTasker& planner) {
     } else {
         ImGui::BeginChild("dp_list", ImVec2(0, 150), true);
         for (const auto& t : dpResult) {
-            ImGui::Text("%02d:00-%02d:00  %s", t.startHour, t.endHour,
+            ImGui::Text("%02d:00 - %02d:00  %s", t.startHour, t.endHour,
                         t.title.c_str());
         }
         ImGui::EndChild();
@@ -257,10 +298,10 @@ static void applyModernStyle() {
     style.ChildRounding     = 6.0f;
 
     // Padding & Spacing
-    style.WindowPadding     = ImVec2(16, 14);
-    style.FramePadding      = ImVec2(11, 8);
-    style.ItemSpacing       = ImVec2(10, 10);
-    style.ItemInnerSpacing  = ImVec2(8, 8);
+    style.WindowPadding     = ImVec2(20, 20);
+    style.FramePadding      = ImVec2(14, 10);
+    style.ItemSpacing       = ImVec2(14, 12);
+    style.ItemInnerSpacing  = ImVec2(10, 10);
 
     // Colors (Modern Dark Theme)
     ImVec4* colors = ImGui::GetStyle().Colors;
@@ -304,19 +345,22 @@ static void applyModernStyle() {
     colors[ImGuiCol_TabUnfocusedActive]     = ImVec4(0.18f, 0.20f, 0.25f, 1.00f);
 }
 
-static void setupFontsWithFreeType() {
+static void setupFontsBuiltin() {
     ImGuiIO& io = ImGui::GetIO();
     io.Fonts->Clear();
 
-#if CRAM_ENABLE_FREETYPE
-    // Use FreeType as atlas builder for crisper glyphs on scaled UI.
-    io.Fonts->SetFontLoader(ImGuiFreeType::GetFontLoader());
-    io.Fonts->FontLoaderFlags = ImGuiFreeTypeLoaderFlags_LightHinting;
-#endif
+    ImFontConfig config;
+    config.OversampleH = 3;
+    config.OversampleV = 3;
+    config.RasterizerMultiply = 1.0f;
+    config.PixelSnapH = true;
 
-    ImFont* base = io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", 21.0f);
-    if (!base)
+    // Use a larger crisp font (26px) for great readability.
+    ImFont* base = io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", 26.0f, &config, io.Fonts->GetGlyphRangesCyrillic());
+    if (!base) {
+        // Fallback to default
         base = io.Fonts->AddFontDefault();
+    }
     io.FontDefault = base;
 }
 
@@ -336,21 +380,15 @@ int main() {
     ImGui::CreateContext();
 
     applyModernStyle();
-    setupFontsWithFreeType();
+    setupFontsBuiltin();
 
-    // Keep elements large and readable without over-scaling text via global multiplier.
-    ImGui::GetStyle().ScaleAllSizes(1.20f);
+    // Increase general UI elements padding, dimensions and spacing for readability
+    ImGui::GetStyle().ScaleAllSizes(1.35f);
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     CramTasker planner;
-
-    static bool seedLoaded = false;
-    if (!seedLoaded) {
-        loadTestData(planner);
-        seedLoaded = true;
-    }
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -365,13 +403,7 @@ int main() {
                      ImGuiWindowFlags_NoResize   |
                      ImGuiWindowFlags_NoMove);
 
-        ImGui::Text("CramTasker Dashboard");
-        ImGui::TextDisabled("Exam prep planner with Greedy + DP scheduling");
-        ImGui::Separator();
-        ImGui::Text("Subjects: %zu", planner.subjectCount());
-        ImGui::SameLine();
-        ImGui::Text("Tasks: %zu", planner.taskCount());
-        ImGui::Spacing();
+        renderTopBanner(planner);
 
         float leftW = ImGui::GetContentRegionAvail().x * 0.38f;
         if (leftW < 420.0f) leftW = 420.0f;

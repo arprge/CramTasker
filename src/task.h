@@ -8,12 +8,13 @@ namespace CramCore {
 
 struct Subject {
     std::string name;
-    int credits      = 0;
-    int currentGrade = 0;
+    int points = 0;
+    int examOrder = 0;
+    int credits = 0;
 
-    // priority = credits * (100 - grade)
+    // priority = credits * (100 - points) / examOrder etc (customize as needed)
     double calcPriority() const {
-        return credits * (100.0 - currentGrade);
+        return (credits * (100.0 - points)) / (examOrder > 0 ? examOrder : 1);
     }
 };
 

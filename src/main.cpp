@@ -6,18 +6,19 @@
 #include <string>
 #include <vector>
 #include <cstring>
+#include <algorithm>
+#include <fstream>
+#include <sstream>
 #include "scheduler.h"
 
 using namespace CramCore;
 
 static void renderTopBanner(CramTasker& planner) {
     ImGui::TextUnformatted("Study planner dashboard");
-    ImGui::TextDisabled("1. Add subjects. 2. Add tasks. 3. Use greedy or DP to compare schedules.");
+    ImGui::TextDisabled("1. Add subjects. 2. Automatically get an optimized study schedule.");
     ImGui::Separator();
 
     ImGui::Text("Subjects: %zu", planner.subjectCount());
-    ImGui::SameLine();
-    ImGui::Text("Tasks: %zu", planner.taskCount());
     ImGui::SameLine();
     ImGui::TextDisabled("Tip: update grades directly in the subjects table.");
     ImGui::Spacing();
@@ -25,265 +26,217 @@ static void renderTopBanner(CramTasker& planner) {
 
 static void renderSubjectListPanel(CramTasker& planner) {
     ImGui::SeparatorText("Subjects (Editable Grades)");
-    ImGui::TextDisabled("Drag the grade slider to update priorities instantly.");
+    ImGui::TextDisabled("Enter the grade to update priorities instantly.");
 
     const auto& subs = planner.getSubjects();
     if (subs.empty()) {
-        ImGui::TextWrapped("No subjects added yet. Start by creating a subject on the left, then add tasks for it.");
+        ImGui::TextWrapped("No subjects added yet. by creating a subject below.");
         return;
     }
 
-    ImGui::BeginChild("subj_list", ImVec2(0, 150), true);
-    if (ImGui::BeginTable("SubjTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
-        ImGui::TableSetupColumn("Name");
-        ImGui::TableSetupColumn("Order", ImGuiTableColumnFlags_WidthFixed, 40.0f);
-        ImGui::TableSetupColumn("Credits", ImGuiTableColumnFlags_WidthFixed, 45.0f);
-        ImGui::TableSetupColumn("Points", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-        ImGui::TableSetupColumn("Prior.", ImGuiTableColumnFlags_WidthFixed, 50.0f);
+    std::string subjectToDelete = "";
+
+    ImGui::BeginChild("subj_list", ImVec2(0, 250), true);
+    if (ImGui::BeginTable("SubjTable", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
+        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Date", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Credits", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Points", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Prior.", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableHeadersRow();
 
+        Date today; today.year = 2026; today.month = 4; today.day = 28;
         for (const auto& [key, s] : subs) {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::Text("%s", s.name.c_str());
             ImGui::TableNextColumn();
-            ImGui::Text("%d", s.examOrder);
+            ImGui::Text("%d-%02d-%02d", s.examDate.year, s.examDate.month, s.examDate.day);
             ImGui::TableNextColumn();
             ImGui::Text("%d", s.credits);
             ImGui::TableNextColumn();
             
             int pts = s.points;
             ImGui::PushID(key.c_str());
-            ImGui::SetNextItemWidth(70.0f);
-            if (ImGui::SliderInt("##gr", &pts, 0, 100)) {
+            ImGui::SetNextItemWidth(110.0f);
+            if (ImGui::InputInt("##gr", &pts, 0)) {
+                pts = std::clamp(pts, 0, 60);
                 planner.updateGrade(key, pts);
             }
             ImGui::PopID();
             
             ImGui::TableNextColumn();
-            ImGui::Text("%.0f", s.calcPriority());
+            ImGui::Text("%.1f", s.calcPriority(today));
+
+            ImGui::TableNextColumn();
+            ImGui::PushID((key + "_del").c_str());
+            if (ImGui::Button("Del")) {
+                subjectToDelete = key;
+            }
+            ImGui::PopID();
         }
         ImGui::EndTable();
     }
     ImGui::EndChild();
+
+    // Удаляем предмет после завершения отрисовки таблицы, чтобы не сломать итератор
+    if (!subjectToDelete.empty()) {
+        planner.removeSubject(subjectToDelete);
+    }
 }
 
 static void renderAddSubjectPanel(CramTasker& planner) {
     static char name[64]  = "";
-    static int  points    = 70;
-    static int  examOrder = 1;
+    static int  points    = 30;
+    static int  examMonth = 5;
+    static int  examDay   = 1;
     static int  credits   = 3;
 
+    const char* months[] = { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" };
+
     ImGui::SeparatorText("Add Subject");
-    ImGui::TextDisabled("Create a course with its points, exam order, and credits.");
+    ImGui::TextDisabled("Create a course with its points, exam date, and credits.");
     ImGui::Dummy(ImVec2(0.0f, 2.0f));
 
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
-    ImGui::InputTextWithHint("Name##subj", "e.g. Algorithms", name, sizeof(name));
-    
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
-    ImGui::SliderInt("Points", &points, 0, 100);
-    
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
-    ImGui::SliderInt("Exam Order", &examOrder, 1, 30);
-    
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
-    ImGui::SliderInt("Credits", &credits, 1, 10);
-    
-    ImGui::Dummy(ImVec2(0.0f, 4.0f));
+    if (ImGui::BeginTable("AddSubjectTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+        ImGui::TableSetupColumn("Labels", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Inputs", ImGuiTableColumnFlags_WidthStretch);
 
-    if (ImGui::Button("Add Subject", ImVec2(140, 32))) {
-        if (name[0] != '\0') {
-            planner.addSubject(name, points, examOrder, credits);
-            memset(name, 0, sizeof(name));
-        }
-    }
-    ImGui::SameLine(0, 10.0f);
-    if (ImGui::Button("Clear", ImVec2(100, 32))) {
-        memset(name, 0, sizeof(name));
-        points = 70;
-        examOrder = 1;
-        credits = 3;
-    }
-}
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("Name");
+        ImGui::TableNextColumn();
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputTextWithHint("##subj", "e.g. Algorithms", name, sizeof(name));
 
-static void renderAddTaskPanel(CramTasker& planner) {
-    static char title[128] = "";
-    static char subKey[64] = "";
-    static int  startH     = 9;
-    static int  endH       = 10;
-    static int  prio       = 5;
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("Points");
+        ImGui::TableNextColumn();
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::InputInt("##points", &points, 1, 5)) points = std::clamp(points, 0, 60);
 
-    ImGui::SeparatorText("Add Task");
-    ImGui::TextDisabled("Choose a subject, then set the study window.");
-    ImGui::InputTextWithHint("Title##task", "e.g. Revise sorting", title, sizeof(title));
-
-    const auto& subjects = planner.getSubjects();
-    if (subjects.empty()) {
-        ImGui::BeginDisabled();
-        if (ImGui::BeginCombo("Subject", "Add a subject first")) {
-            ImGui::EndCombo();
-        }
-        ImGui::EndDisabled();
-        ImGui::TextWrapped("You need at least one subject before creating a task.");
-    } else {
-        if (ImGui::BeginCombo("Subject", subKey[0] == '\0' ? "(select)" : subKey)) {
-            for (const auto& [k, s] : subjects) {
-                bool is_selected = (strcmp(subKey, k.c_str()) == 0);
-                if (ImGui::Selectable(k.c_str(), is_selected)) {
-                    memset(subKey, 0, sizeof(subKey));
-                    strncpy(subKey, k.c_str(), sizeof(subKey) - 1);
-                }
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("Exam Date");
+        ImGui::TableNextColumn();
+        ImGui::SetNextItemWidth(180.0f);
+        if (ImGui::BeginCombo("##month", months[examMonth - 1])) {
+            for (int i = 0; i < 12; i++) {
+                bool is_selected = (examMonth == i + 1);
+                if (ImGui::Selectable(months[i], is_selected)) examMonth = i + 1;
                 if (is_selected) ImGui::SetItemDefaultFocus();
             }
             ImGui::EndCombo();
         }
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("Day");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::InputInt("##day", &examDay, 1, 5)) examDay = std::clamp(examDay, 1, 31);
+
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("Credits");
+        ImGui::TableNextColumn();
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::InputInt("##credits", &credits, 1, 1)) credits = std::clamp(credits, 1, 6);
+
+        ImGui::EndTable();
     }
+    
+    ImGui::Dummy(ImVec2(0.0f, 4.0f));
 
-    ImGui::SliderInt("Start hour",    &startH, 0, 23);
-    ImGui::SliderInt("End hour",      &endH,   1, 24);
-    ImGui::SliderInt("Priority",      &prio,   1, 10);
-    ImGui::TextDisabled("Higher priority means the task appears more urgent in the heap view.");
-
-    ImGui::BeginDisabled(subjects.empty());
-    bool addPressed = ImGui::Button("Add Task");
-    ImGui::EndDisabled();
-
-    if (addPressed && !subjects.empty()) {
-        if (title[0] != '\0' && subKey[0] != '\0' && endH > startH) {
-            planner.addTask(title, subKey, startH, endH, prio);
-            memset(title,  0, sizeof(title));
+    if (ImGui::Button("Add Subject", ImVec2(180, 0))) {
+        if (name[0] != '\0') {
+            Date d; d.year = 2026; d.month = examMonth; d.day = examDay;
+            planner.addSubject(name, points, d, credits);
+            memset(name, 0, sizeof(name));
         }
+    }
+    ImGui::SameLine(0, 10.0f);
+    if (ImGui::Button("Clear", ImVec2(120, 0))) {
+        memset(name, 0, sizeof(name));
+        points = 30;
+        examMonth = 5; examDay = 1;
+        credits = 3;
     }
 }
 
 static void renderSchedulePanel(CramTasker& planner) {
-    ImGui::SeparatorText("Schedule");
-    ImGui::TextDisabled("Completed tasks are dimmed. Conflicts are highlighted in red.");
+    ImGui::SeparatorText("Suggested Study Schedule (Calendar View)");
+    ImGui::TextDisabled("Based on formula: (credits * (60 - points)) / daysLeft");
 
-    if (ImGui::Button("Sort by End Time")) planner.sortByEnd();
-    ImGui::SameLine();
-    ImGui::TextDisabled("Tasks: %zu", planner.taskCount());
+    Date today; today.year = 2026; today.month = 4; today.day = 28;
+    auto schedule = planner.generateSchedule(today);
+    if (schedule.empty()) {
+        ImGui::TextWrapped("No subjects to schedule.");
+        return;
+    }
 
-    ImGui::BeginChild("sched_list", ImVec2(0, 220), true);
-    if (ImGui::BeginTable("SchedTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY)) {
-        ImGui::TableSetupColumn("Done", ImGuiTableColumnFlags_WidthFixed, 52.0f);
-        ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, 120.0f);
-        ImGui::TableSetupColumn("Task");
-        ImGui::TableSetupColumn("Weight", ImGuiTableColumnFlags_WidthFixed, 88.0f);
-        ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 72.0f);
-        ImGui::TableHeadersRow();
-
-        const auto& tasks = planner.getTasks();
-        int lastEnd = -1;
-        
-        std::string taskToDelete = "";
-
-        for (size_t i = 0; i < tasks.size(); ++i) {
-            const auto& t = tasks[i];
-            ImGui::TableNextRow();
+    ImGui::BeginChild("sched_cal", ImVec2(0, 0), true);
+    
+    // Group schedule by month to display multiple calendars if needed
+    int currentMonthDisplay = -1;
+    
+    for (size_t i = 0; i < schedule.size(); ) {
+        int monthLabel = schedule[i].date.month;
+        if (monthLabel != currentMonthDisplay) {
+            if (currentMonthDisplay != -1) ImGui::Spacing();
+            const char* months[] = { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" };
+            int monthIdx = std::clamp(monthLabel - 1, 0, 11);
+            ImGui::Text("%s %d", months[monthIdx], schedule[i].date.year);
+            currentMonthDisplay = monthLabel;
             
-            // Checkmark
-            ImGui::TableNextColumn();
-            bool done = t.completed;
-            ImGui::PushID(t.title.c_str());
-            if (ImGui::Checkbox("##done", &done)) {
-                planner.toggleTaskCompletion(t.title);
+            ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(8, 8));
+            if (ImGui::BeginTable(("CalTab_" + std::to_string(monthLabel)).c_str(), 7, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Mon"); ImGui::TableSetupColumn("Tue"); ImGui::TableSetupColumn("Wed");
+                ImGui::TableSetupColumn("Thu"); ImGui::TableSetupColumn("Fri"); ImGui::TableSetupColumn("Sat"); ImGui::TableSetupColumn("Sun");
+                ImGui::TableHeadersRow();
+                
+                // Keep track of day of week to format calendar properly
+                int dayOfWeek = (schedule[i].date.day) % 7; 
+                
+                ImGui::TableNextRow(ImGuiTableRowFlags_None, 110.0f);
+                for (int skip = 0; skip < dayOfWeek; skip++) {
+                    ImGui::TableNextColumn();
+                }
+
+                while (i < schedule.size() && schedule[i].date.month == monthLabel) {
+                    if (dayOfWeek >= 7) {
+                        dayOfWeek = 0;
+                        ImGui::TableNextRow(ImGuiTableRowFlags_None, 110.0f);
+                    }
+                    ImGui::TableNextColumn();
+                    const auto& s = schedule[i];
+                    
+                    ImGui::TextDisabled("%d", s.date.day);
+                    ImGui::Separator();
+                    if (!s.subjectName.empty()) {
+                        ImGui::TextWrapped("%s", s.subjectName.c_str());
+                        ImGui::TextColored(ImVec4(0.8f, 0.4f, 0.4f, 1.0f), "Pr: %.1f", s.priority);
+                    }
+                    
+                    dayOfWeek++;
+                    i++;
+                }
+
+                ImGui::EndTable();
             }
-            ImGui::PopID();
-
-            // Time with conflict warning
-            ImGui::TableNextColumn();
-            bool conflict = (lastEnd != -1 && t.startHour < lastEnd);
-            if (conflict) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
-            ImGui::Text("%02d:00 - %02d:00", t.startHour, t.endHour);
-            if (conflict) ImGui::PopStyleColor();
-            if (!conflict || t.endHour > lastEnd) lastEnd = t.endHour;
-            
-            if (done) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
-            
-            // Title & Subject
-            ImGui::TableNextColumn();
-            ImGui::Text("%s", t.title.c_str());
-            ImGui::TextDisabled("%s", t.subjectKey.c_str());
-
-            // Weight
-            ImGui::TableNextColumn();
-            ImGui::Text("%.0f", t.weight);
-
-            if (done) ImGui::PopStyleColor();
-
-            // Action
-            ImGui::TableNextColumn();
-            ImGui::PushID(t.title.c_str());
-            if (ImGui::Button("Delete")) {
-                taskToDelete = t.title;
-            }
-            ImGui::PopID();
-        }
-        ImGui::EndTable();
-        
-        if (!taskToDelete.empty()) {
-            planner.removeTask(taskToDelete);
+            ImGui::PopStyleVar();
         }
     }
+    
     ImGui::EndChild();
 }
 
-static void renderUrgentPanel(CramTasker& planner) {
-    static int topN = 3;
-    ImGui::SeparatorText("Urgent (Heap top-N)");
-    ImGui::TextDisabled("Shows the most urgent tasks based on calculated weight.");
-    ImGui::SliderInt("Top N", &topN, 1, 10);
 
-    if (ImGui::Button("Show Urgent"))
-        planner.displayUrgent(topN);
-
-    ImGui::TextDisabled("(see terminal)");
-}
-
-static void renderGreedyPanel(CramTasker& planner) {
-    static std::vector<Task> result;
-
-    ImGui::SeparatorText("Greedy Activity Selection");
-    ImGui::TextDisabled("Maximizes the number of non-overlapping study blocks.");
-    if (ImGui::Button("Run Greedy"))
-        result = planner.greedySchedule();
-
-    if (!result.empty()) {
-        ImGui::SameLine();
-        ImGui::Text("=> %zu selected", result.size());
-    }
-
-    ImGui::BeginChild("greedy_list", ImVec2(0, 130), true);
-    for (const auto& t : result) {
-        ImGui::Text("%02d:00-%02d:00  %s  (w=%.0f)",
-                    t.startHour, t.endHour, t.title.c_str(), t.weight);
-    }
-    ImGui::EndChild();
-}
-
-static void renderDPPanel(CramTasker& planner) {
-    static std::vector<Task> dpResult;
-
-    ImGui::SeparatorText("DP Weighted Scheduling");
-    ImGui::TextDisabled("Chooses the best total-priority schedule.");
-
-    if (ImGui::Button("Run DP")) {
-        dpResult = planner.dpSchedule();
-    }
-
-    if (dpResult.empty()) {
-        ImGui::TextDisabled("Run to see optimal schedule.");
-    } else {
-        ImGui::BeginChild("dp_list", ImVec2(0, 150), true);
-        for (const auto& t : dpResult) {
-            ImGui::Text("%02d:00 - %02d:00  %s", t.startHour, t.endHour,
-                        t.title.c_str());
-        }
-        ImGui::EndChild();
-    }
-}
 
 static void applyModernStyle() {
     ImGuiStyle& style = ImGui::GetStyle();
@@ -364,6 +317,51 @@ static void setupFontsBuiltin() {
     io.FontDefault = base;
 }
 
+static void saveSubjects(CramTasker& planner, const std::string& filepath) {
+    std::ofstream out(filepath);
+    if (!out.is_open()) return;
+
+    for (const auto& [key, s] : planner.getSubjects()) {
+        out << s.name << "|" 
+            << s.points << "|" 
+            << s.examDate.year << "|" 
+            << s.examDate.month << "|" 
+            << s.examDate.day << "|" 
+            << s.credits << "\n";
+    }
+}
+
+static void loadSubjects(CramTasker& planner, const std::string& filepath) {
+    std::ifstream in(filepath);
+    if (!in.is_open()) return;
+
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty()) continue;
+        std::stringstream ss(line);
+        std::string name, token;
+        
+        try {
+            if (!std::getline(ss, name, '|')) continue;
+            if (!std::getline(ss, token, '|')) continue;
+            int points = std::stoi(token);
+            if (!std::getline(ss, token, '|')) continue;
+            int year = std::stoi(token);
+            if (!std::getline(ss, token, '|')) continue;
+            int month = std::stoi(token);
+            if (!std::getline(ss, token, '|')) continue;
+            int day = std::stoi(token);
+            if (!std::getline(ss, token, '|')) continue;
+            int credits = std::stoi(token);
+
+            Date d; d.year = year; d.month = month; d.day = day;
+            planner.addSubject(name, points, d, credits);
+        } catch (...) {
+            // Игнорируем некорректные строки в случае повреждения файла
+        }
+    }
+}
+
 int main() {
     if (!glfwInit()) return 1;
 
@@ -389,6 +387,7 @@ int main() {
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     CramTasker planner;
+    loadSubjects(planner, "subjects_data.txt");
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -405,26 +404,18 @@ int main() {
 
         renderTopBanner(planner);
 
-        float leftW = ImGui::GetContentRegionAvail().x * 0.38f;
-        if (leftW < 420.0f) leftW = 420.0f;
+        float leftW = ImGui::GetContentRegionAvail().x * 0.45f;
+        if (leftW < 600.0f) leftW = 600.0f;
         ImGui::BeginChild("left", ImVec2(leftW, 0), false);
         renderSubjectListPanel(planner);
         ImGui::Spacing();
         renderAddSubjectPanel(planner);
-        ImGui::Spacing();
-        renderAddTaskPanel(planner);
         ImGui::EndChild();
 
         ImGui::SameLine();
 
         ImGui::BeginChild("right", ImVec2(0, 0), false);
         renderSchedulePanel(planner);
-        ImGui::Spacing();
-        renderUrgentPanel(planner);
-        ImGui::Spacing();
-        renderGreedyPanel(planner);
-        ImGui::Spacing();
-        renderDPPanel(planner);
         ImGui::EndChild();
 
         ImGui::End();
@@ -438,6 +429,8 @@ int main() {
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
     }
+
+    saveSubjects(planner, "subjects_data.txt");
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();

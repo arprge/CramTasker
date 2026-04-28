@@ -3,55 +3,34 @@
 
 #include <string>
 #include <unordered_map>
+#include <algorithm>
 
 namespace CramCore {
+
+struct Date {
+    int year;
+    int month;
+    int day;
+
+    int toDays() const {
+        return year * 365 + month * 30 + day;
+    }
+};
 
 struct Subject {
     std::string name;
     int points = 0;
-    int examOrder = 0;
+    Date examDate;
     int credits = 0;
 
-    // priority = credits * (100 - points) / examOrder etc (customize as needed)
-    double calcPriority() const {
-        return (credits * (100.0 - points)) / (examOrder > 0 ? examOrder : 1);
+    double calcPriority(Date current) const {
+        int daysLeft = examDate.toDays() - current.toDays();
+        if (daysLeft <= 0) return 0.0;
+        return (credits * (60.0 - points)) / std::max(1, daysLeft);
     }
 };
 
 using SubjectMap = std::unordered_map<std::string, Subject>;
-
-struct Task {
-    std::string title;
-    std::string subjectKey;
-    int startHour = 0;
-    int endHour   = 0;
-    int priority  = 0;
-    double weight = 0.0;
-
-    bool completed = false;
-
-    int duration() const { return endHour - startHour; }
-};
-
-// max-heap by weight
-struct CmpWeight {
-    bool operator()(const Task& a, const Task& b) const {
-        return a.weight < b.weight;
-    }
-};
-
-// sort by end time
-struct CmpEnd {
-    bool operator()(const Task& a, const Task& b) const {
-        return a.endHour < b.endHour;
-    }
-};
-
-// struct CmpStart {
-//     bool operator()(const Task& a, const Task& b) const {
-//         return a.startHour < b.startHour;
-//     }
-// };
 
 } // namespace CramCore
 

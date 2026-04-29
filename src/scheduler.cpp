@@ -33,6 +33,9 @@ std::vector<StudyDay> CramTasker::generateSchedule(Date today) const {
         maxExamDays = std::max(maxExamDays, kv.second.examDate.toDays());
     }
 
+    // Создаем копию предметов для симуляции прогресса обучения в рамках расписания
+    SubjectMap simSubjects = subjects_;
+
     for (int d = today.toDays(); d <= maxExamDays; ++d) {
         Date currentDay;
         currentDay.year = d / 365;
@@ -44,16 +47,30 @@ std::vector<StudyDay> CramTasker::generateSchedule(Date today) const {
 
         for (const auto& kv : subjects_) {
             if (kv.second.examDate.toDays() > d) {
+        for (auto& kv : simSubjects) {
+            int examDay = kv.second.examDate.toDays();
+            // Планируем предмет, только если экзамен еще не прошел и знания не максимальные
+            if (examDay > d && kv.second.points < 60) {
                 double priority = kv.second.calcPriority(currentDay);
                 if (priority > maxPriority) {
+                // При равном приоритете отдаем предпочтение более близкому экзамену
+                if (priority > maxPriority || 
+                   (priority == maxPriority && !bestSubject.empty() && examDay < simSubjects[bestSubject].examDate.toDays())) {
                     maxPriority = priority;
                     bestSubject = kv.second.name;
+                    bestSubject = kv.first;
                 }
             }
         }
         
         if (maxPriority >= 0 && !bestSubject.empty()) {
+        if (!bestSubject.empty()) {
             schedule.push_back({currentDay, bestSubject, maxPriority});
+            // Симулируем учебу: 1 день занятий дает +5 баллов к уверенности (максимум до 60)
+            simSubjects[bestSubject].points = std::min(60, simSubjects[bestSubject].points + 5);
+        } else {
+            // Если все предметы доведены до 60 баллов — добавляем свободный день для корректного календаря
+            schedule.push_back({currentDay, "", 0.0});
         }
     }
     return schedule;
